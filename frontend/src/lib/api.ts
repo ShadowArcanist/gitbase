@@ -148,6 +148,57 @@ export type IssueComment = {
 	updated_at: string;
 };
 
+export type PullRequest = {
+	id: number;
+	repo_id: number;
+	number: number;
+	title: string;
+	body: string;
+	state: "open" | "merged" | "closed";
+	is_draft: boolean;
+	head_branch: string;
+	base_branch: string;
+	merge_commit_sha: string;
+	labels: Label[];
+	comment_count: number;
+	additions: number;
+	deletions: number;
+	created_at: string;
+	updated_at: string;
+	merged_at: string | null;
+	closed_at: string | null;
+};
+
+export type PRListResponse = {
+	pull_requests: PullRequest[];
+	open_count: number;
+	merged_count: number;
+	closed_count: number;
+};
+
+export type PRDetailResponse = {
+	pull_request: PullRequest;
+	comments: PRComment[];
+	head_exists: boolean;
+	base_exists: boolean;
+	can_merge?: boolean;
+	diff?: string;
+	ahead?: number;
+	behind?: number;
+	commits?: Commit[];
+	additions?: number;
+	deletions?: number;
+	changed_files?: number;
+};
+
+export type PRComment = {
+	id: number;
+	pr_id: number;
+	body: string;
+	created_at: string;
+	updated_at: string;
+};
+
 export function slugToUrl(slug: string) {
 	return slug;
 }
@@ -469,6 +520,69 @@ export const api = {
 		const res = await fetch(`/api/repos/${slugToUrl(slug)}/labels/${id}`, {
 			method: "DELETE",
 		});
+		if (!res.ok) throw new Error(`${res.status}`);
+	},
+
+	// Pull Requests
+	listPRs: (slug: string, state = "open") =>
+		jsonFetch<PRListResponse>(
+			`/api/repos/${slugToUrl(slug)}/pulls?state=${encodeURIComponent(state)}`,
+		),
+	getPR: (slug: string, number: number) =>
+		jsonFetch<PRDetailResponse>(
+			`/api/repos/${slugToUrl(slug)}/pulls/${number}`,
+		),
+	createPR: (
+		slug: string,
+		body: { title: string; body?: string; head_branch: string; base_branch: string; is_draft?: boolean; label_ids?: number[] },
+	) =>
+		jsonFetch<PullRequest>(`/api/repos/${slugToUrl(slug)}/pulls`, {
+			method: "POST",
+			body: JSON.stringify(body),
+		}),
+	patchPR: (
+		slug: string,
+		number: number,
+		body: { title?: string; body?: string; state?: string; is_draft?: boolean; label_ids?: number[] },
+	) =>
+		jsonFetch<PullRequest>(`/api/repos/${slugToUrl(slug)}/pulls/${number}`, {
+			method: "PATCH",
+			body: JSON.stringify(body),
+		}),
+	mergePR: (slug: string, number: number, body?: { message?: string; strategy?: string }) =>
+		jsonFetch<{ pull_request: PullRequest; merge_sha: string }>(
+			`/api/repos/${slugToUrl(slug)}/pulls/${number}/merge`,
+			{ method: "POST", body: JSON.stringify(body ?? {}) },
+		),
+	updatePRBranch: (slug: string, number: number) =>
+		jsonFetch<{ ok: boolean }>(
+			`/api/repos/${slugToUrl(slug)}/pulls/${number}/update-branch`,
+			{ method: "POST", body: "{}" },
+		),
+	deletePR: async (slug: string, number: number) => {
+		const res = await fetch(
+			`/api/repos/${slugToUrl(slug)}/pulls/${number}`,
+			{ method: "DELETE" },
+		);
+		if (!res.ok) throw new Error(`${res.status}`);
+	},
+
+	// PR Comments
+	createPRComment: (slug: string, number: number, body: { body: string }) =>
+		jsonFetch<PRComment>(
+			`/api/repos/${slugToUrl(slug)}/pulls/${number}/comments`,
+			{ method: "POST", body: JSON.stringify(body) },
+		),
+	updatePRComment: (slug: string, number: number, commentId: number, body: { body: string }) =>
+		jsonFetch<PRComment>(
+			`/api/repos/${slugToUrl(slug)}/pulls/${number}/comments/${commentId}`,
+			{ method: "PATCH", body: JSON.stringify(body) },
+		),
+	deletePRComment: async (slug: string, number: number, commentId: number) => {
+		const res = await fetch(
+			`/api/repos/${slugToUrl(slug)}/pulls/${number}/comments/${commentId}`,
+			{ method: "DELETE" },
+		);
 		if (!res.ok) throw new Error(`${res.status}`);
 	},
 };

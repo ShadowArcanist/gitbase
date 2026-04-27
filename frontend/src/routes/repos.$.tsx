@@ -14,6 +14,7 @@ import {
 	ArrowLeftIcon,
 	CircleDotIcon,
 	CodeIcon,
+	GitPullRequestIcon,
 	CopyIcon,
 	FileIcon,
 	FolderIcon,
@@ -36,6 +37,8 @@ import { CommitPage } from "@/components/repo/commit-page";
 import { IssueDetail } from "@/components/repo/issue-detail";
 import { IssuesTab } from "@/components/repo/issues-tab";
 import { LabelsPage } from "@/components/repo/labels-page";
+import { PullDetail } from "@/components/repo/pull-detail";
+import { PullsTab } from "@/components/repo/pulls-tab";
 import { RepoFileTree } from "@/components/repo/repo-file-tree";
 import { FolderView } from "@/components/repo/folder-view";
 import {
@@ -79,7 +82,7 @@ import { type Repo, api, slugToUrl } from "@/lib/api";
 import { formatRelativeTime } from "@/lib/format-relative-time";
 import { cn, formatBytes } from "@/lib/utils";
 
-type Tab = "code" | "commits" | "branches" | "issues" | "settings";
+type Tab = "code" | "commits" | "branches" | "issues" | "pulls" | "settings";
 
 type RepoSearch = {
 	tab?: Tab;
@@ -89,6 +92,7 @@ type RepoSearch = {
 	file?: string;
 	issue?: number;
 	labels?: boolean;
+	pr?: number;
 };
 
 type TreeQueryData = { entries: { name: string; type: string }[] };
@@ -122,6 +126,7 @@ export const Route = createFileRoute("/repos/$")({
 		file: typeof s.file === "string" ? s.file : undefined,
 		issue: typeof s.issue === "number" ? s.issue : undefined,
 		labels: s.labels === true ? true : undefined,
+		pr: typeof s.pr === "number" ? s.pr : undefined,
 	}),
 	loader: ({ params, context }) => {
 		const slug = params._splat ?? "";
@@ -191,6 +196,9 @@ function RepoPage() {
 							{tab === "branches" && <BranchesTab repo={repoQ.data} />}
 							{tab === "issues" && (
 								<IssuesTabWrapper repo={repoQ.data} search={search} />
+							)}
+							{tab === "pulls" && (
+								<PullsTabWrapper repo={repoQ.data} search={search} />
 							)}
 							{tab === "settings" && <SettingsTab repo={repoQ.data} />}
 						</div>
@@ -426,7 +434,14 @@ function RepoToolbar({
 	});
 	const openIssueCount = issuesQ.data?.open_count ?? 0;
 
-	const isOtherTab = tab === "branches" || tab === "settings" || tab === "issues";
+	const prsQ = useQuery({
+		queryKey: ["pulls", repo.slug, "open"],
+		queryFn: () => api.listPRs(repo.slug, "open"),
+		staleTime: 60_000,
+	});
+	const openPRCount = prsQ.data?.open_count ?? 0;
+
+	const isOtherTab = tab === "branches" || tab === "settings" || tab === "issues" || tab === "pulls";
 	const hasPath = tab === "code" && !!search.path;
 	const isCommitsTab = tab === "commits";
 	const showBackLink = hasPath || isCommitsTab || isOtherTab;
@@ -543,6 +558,23 @@ function RepoToolbar({
 							<span className="optical-center">
 								<span className="tabular-nums font-semibold">{openIssueCount}</span>{" "}
 								{openIssueCount === 1 ? "Issue" : "Issues"}
+							</span>
+						</button>
+						<button
+							type="button"
+							onClick={() =>
+								nav({
+									to: "/repos/$",
+									params: { _splat: repo.slug },
+									search: { tab: "pulls" },
+								})
+							}
+							className={chipClass}
+						>
+							<GitPullRequestIcon size={13} strokeWidth={2} />
+							<span className="optical-center">
+								<span className="tabular-nums font-semibold">{openPRCount}</span>{" "}
+								{openPRCount === 1 ? "PR" : "PRs"}
 							</span>
 						</button>
 				</>
@@ -1560,6 +1592,37 @@ function IssuesTabWrapper({ repo, search }: { repo: Repo; search: RepoSearch }) 
 					to: "/repos/$",
 					params: { _splat: repo.slug },
 					search: { tab: "issues", labels: true },
+				})
+			}
+		/>
+	);
+}
+
+function PullsTabWrapper({ repo, search }: { repo: Repo; search: RepoSearch }) {
+	const nav = useNavigate();
+	if (search.pr) {
+		return (
+			<PullDetail
+				repo={repo}
+				number={search.pr}
+				onBack={() =>
+					nav({
+						to: "/repos/$",
+						params: { _splat: repo.slug },
+						search: { tab: "pulls" },
+					})
+				}
+			/>
+		);
+	}
+	return (
+		<PullsTab
+			repo={repo}
+			onSelectPR={(num) =>
+				nav({
+					to: "/repos/$",
+					params: { _splat: repo.slug },
+					search: { tab: "pulls", pr: num },
 				})
 			}
 		/>

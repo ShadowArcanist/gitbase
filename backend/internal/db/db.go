@@ -98,6 +98,40 @@ CREATE TABLE IF NOT EXISTS issue_comments (
     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
+
+CREATE TABLE IF NOT EXISTS pull_requests (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    repo_id INTEGER NOT NULL REFERENCES repos(id) ON DELETE CASCADE,
+    number INTEGER NOT NULL,
+    title TEXT NOT NULL,
+    body TEXT NOT NULL DEFAULT '',
+    state TEXT NOT NULL DEFAULT 'open',
+    is_draft INTEGER NOT NULL DEFAULT 0,
+    head_branch TEXT NOT NULL,
+    base_branch TEXT NOT NULL,
+    merge_commit_sha TEXT NOT NULL DEFAULT '',
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    merged_at DATETIME,
+    closed_at DATETIME,
+    UNIQUE(repo_id, number)
+);
+
+CREATE INDEX IF NOT EXISTS idx_pull_requests_repo_state ON pull_requests(repo_id, state);
+
+CREATE TABLE IF NOT EXISTS pr_labels (
+    pr_id INTEGER NOT NULL REFERENCES pull_requests(id) ON DELETE CASCADE,
+    label_id INTEGER NOT NULL REFERENCES labels(id) ON DELETE CASCADE,
+    PRIMARY KEY (pr_id, label_id)
+);
+
+CREATE TABLE IF NOT EXISTS pr_comments (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    pr_id INTEGER NOT NULL REFERENCES pull_requests(id) ON DELETE CASCADE,
+    body TEXT NOT NULL,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
 `
 
 func Open(path string) (*sql.DB, error) {
@@ -116,5 +150,14 @@ func Open(path string) (*sql.DB, error) {
 
 func Migrate(d *sql.DB) error {
 	_, err := d.Exec(schema)
-	return err
+	if err != nil {
+		return err
+	}
+	migrations := []string{
+		`ALTER TABLE pull_requests ADD COLUMN merge_commit_sha TEXT NOT NULL DEFAULT ''`,
+	}
+	for _, m := range migrations {
+		d.Exec(m)
+	}
+	return nil
 }

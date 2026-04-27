@@ -322,7 +322,7 @@ func (s *Server) activity(w http.ResponseWriter, r *http.Request) {
 
 var repoActions = map[string]struct{}{
 	"branches": {}, "tags": {}, "commits": {}, "commit-count": {}, "tree": {}, "tree-meta": {}, "blob": {},
-	"raw": {}, "diff": {}, "readme": {}, "image": {}, "issues": {}, "labels": {},
+	"raw": {}, "diff": {}, "readme": {}, "image": {}, "issues": {}, "labels": {}, "pulls": {},
 }
 
 func (s *Server) repoSubrouter(w http.ResponseWriter, r *http.Request) {
@@ -333,7 +333,7 @@ func (s *Server) repoSubrouter(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	parts := strings.Split(rest, "/")
-	var slug, action, sha, branchName, issueNumber, commentID, labelID string
+	var slug, action, sha, branchName, issueNumber, commentID, labelID, prNumber string
 	last := parts[len(parts)-1]
 	if _, ok := repoActions[last]; ok {
 		slug = strings.Join(parts[:len(parts)-1], "/")
@@ -358,6 +358,27 @@ func (s *Server) repoSubrouter(w http.ResponseWriter, r *http.Request) {
 	} else if len(parts) >= 2 && parts[len(parts)-2] == "issues" {
 		issueNumber = last
 		action = "issues"
+		slug = strings.Join(parts[:len(parts)-2], "/")
+	} else if len(parts) >= 4 && parts[len(parts)-2] == "comments" && parts[len(parts)-4] == "pulls" {
+		commentID = last
+		prNumber = parts[len(parts)-3]
+		action = "pr-comment"
+		slug = strings.Join(parts[:len(parts)-4], "/")
+	} else if len(parts) >= 3 && parts[len(parts)-1] == "comments" && parts[len(parts)-3] == "pulls" {
+		prNumber = parts[len(parts)-2]
+		action = "pr-comments"
+		slug = strings.Join(parts[:len(parts)-3], "/")
+	} else if len(parts) >= 3 && parts[len(parts)-1] == "merge" && parts[len(parts)-3] == "pulls" {
+		prNumber = parts[len(parts)-2]
+		action = "pr-merge"
+		slug = strings.Join(parts[:len(parts)-3], "/")
+	} else if len(parts) >= 3 && parts[len(parts)-1] == "update-branch" && parts[len(parts)-3] == "pulls" {
+		prNumber = parts[len(parts)-2]
+		action = "pr-update-branch"
+		slug = strings.Join(parts[:len(parts)-3], "/")
+	} else if len(parts) >= 2 && parts[len(parts)-2] == "pulls" {
+		prNumber = last
+		action = "pulls"
 		slug = strings.Join(parts[:len(parts)-2], "/")
 	} else if len(parts) >= 2 && parts[len(parts)-2] == "labels" {
 		labelID = last
@@ -387,6 +408,9 @@ func (s *Server) repoSubrouter(w http.ResponseWriter, r *http.Request) {
 		}
 		if labelID != "" {
 			rctx.URLParams.Add("labelID", labelID)
+		}
+		if prNumber != "" {
+			rctx.URLParams.Add("prNumber", prNumber)
 		}
 	}
 	switch action {
@@ -518,6 +542,53 @@ func (s *Server) repoSubrouter(w http.ResponseWriter, r *http.Request) {
 			return
 		case http.MethodDelete:
 			s.deleteLabel(w, r)
+			return
+		}
+	case "pulls":
+		if prNumber != "" {
+			switch r.Method {
+			case http.MethodGet:
+				s.getPR(w, r)
+				return
+			case http.MethodPatch:
+				s.patchPR(w, r)
+				return
+			case http.MethodDelete:
+				s.deletePR(w, r)
+				return
+			}
+		} else {
+			switch r.Method {
+			case http.MethodGet:
+				s.listPRs(w, r)
+				return
+			case http.MethodPost:
+				s.createPR(w, r)
+				return
+			}
+		}
+	case "pr-merge":
+		if r.Method == http.MethodPost {
+			s.mergePR(w, r)
+			return
+		}
+	case "pr-update-branch":
+		if r.Method == http.MethodPost {
+			s.updatePRBranch(w, r)
+			return
+		}
+	case "pr-comments":
+		if r.Method == http.MethodPost {
+			s.createPRComment(w, r)
+			return
+		}
+	case "pr-comment":
+		switch r.Method {
+		case http.MethodPatch:
+			s.updatePRComment(w, r)
+			return
+		case http.MethodDelete:
+			s.deletePRComment(w, r)
 			return
 		}
 	default:
