@@ -1,0 +1,20 @@
+services:
+  gitbase:
+    image: 'ghcr.io/shadowarcanist/gitbase:latest'
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+      - "2222:2222"
+    volumes:
+      - gitbase-data:/data
+    environment:
+      - GITBASE_ADDR=:3000
+      - GITBASE_DATA=/data
+      # - GITBASE_PUBLIC_URL=https://git.example.com
+      # - GITBASE_MAX_BLOB_BYTES=5242880
+      - SSH_ENABLED=true
+      - SSH_PORT=2222
+      - SSH_HOST=0.0.0.0
+
+volumes:
+  gitbase-data:

@@ -1,0 +1,14 @@
+services:
+  gitbase:
+    image: 'ghcr.io/shadowarcanist/gitbase:latest'
+    pull_policy: always
+    environment:
+      - SERVICE_URL_GITBASE_3000
+      - 'GITBASE_PUBLIC_URL=${SERVICE_URL_GITBASE}'
+      - GITBASE_DATA=${GITBASE_DATA:-/data}
+      - GITBASE_ADDR=${GITBASE_ADDR:-:3000}
+      - 'GITBASE_MAX_BLOB_BYTES=${GITBASE_MAX_BLOB_BYTES:-5242880}'
+      - 'SSH_ENABLED=${SSH_ENABLED:-false}'
+      - 'SSH_PORT=${SSH_PORT:-4444}'
+    volumes:
+      - 'gitbase_data:/data'

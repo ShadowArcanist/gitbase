@@ -1,0 +1,17 @@
+import { Spinner } from "@/components/ui/spinner";
+
+export function DashboardContentLoading() {
+	return (
+		<div className="flex h-full items-center justify-center">
+			<Spinner size={20} className="text-muted-foreground" />
+		</div>
+	);
+}
+
+export function DashboardViewportLoading() {
+	return (
+		<div className="flex min-h-dvh items-center justify-center bg-background">
+			<Spinner size={20} className="text-muted-foreground" />
+		</div>
+	);
+}

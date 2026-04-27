@@ -1,0 +1,15 @@
+.git
+.ai
+.DS_Store
+data
+tmp
+frontend/node_modules
+frontend/dist
+backend/bin
+backend/internal/web/dist
+*.test
+tt.tt
+.env.example
+README.md
+LICENSE
+.github

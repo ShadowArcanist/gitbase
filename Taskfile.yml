@@ -1,0 +1,111 @@
+version: "3"
+
+dotenv:
+  - deployment.conf
+
+vars:
+  FRONTEND_DIST: backend/internal/web/dist
+  BIN_DIR: bin
+  DEPLOY_PIPELINE_DIR: "{{.HOME}}/developer/admin/deployment-pipeline"
+
+tasks:
+  default:
+    desc: List tasks
+    cmds:
+      - task --list
+
+  deploy:
+    desc: Deploy this project using the global CI/CD pipeline
+    silent: true 
+    cmds:
+      - '[ -f "{{.DEPLOY_PIPELINE_DIR}}/Taskfile.yml" ] || { echo "Global Taskfile not found"; exit 1; }'
+      - task -d {{.DEPLOY_PIPELINE_DIR}} deploy PROJECT_DIR="{{.PWD}}"
+
+  dev:backend:
+    desc: Run Go backend with live rebuild on :3000
+    dir: backend
+    cmds:
+      - go run ./cmd/gitbase
+
+  dev:frontend:
+    desc: Run Vite dev server on :5173 (proxies /api to :3000)
+    dir: frontend
+    cmds:
+      - bun install
+      - bun run dev
+
+  build:frontend:
+    desc: Build frontend and copy output into embed dir
+    dir: frontend
+    cmds:
+      - bun install
+      - bun run build
+      - rm -rf ../{{.FRONTEND_DIST}}
+      - mkdir -p ../{{.FRONTEND_DIST}}
+      - cp -r dist/. ../{{.FRONTEND_DIST}}/
+
+  build:backend:
+    desc: Build single Go binary (embeds frontend)
+    dir: backend
+    cmds:
+      - mkdir -p ../{{.BIN_DIR}}
+      - go build -trimpath -ldflags="-s -w" -o ../{{.BIN_DIR}}/gitbase ./cmd/gitbase
+
+  build:
+    desc: Build frontend + backend
+    cmds:
+      - task: build:frontend
+      - task: build:backend
+
+  run:
+    desc: Build and run the bundled binary with ./data
+    deps: [build]
+    cmds:
+      - ./{{.BIN_DIR}}/gitbase
+
+  docker:
+    desc: Build Docker image gitbase:local
+    cmds:
+      - docker build -t gitbase:local .
+
+  docker:run:
+    desc: Run Docker image, bind 3000, persist ./data
+    cmds:
+      - docker run --rm -p 3000:3000 -p 4444:4444 -v {{.ROOT_DIR}}/data:/data gitbase:local
+
+  vet:
+    desc: go vet backend
+    dir: backend
+    cmds:
+      - go vet ./...
+
+  test:
+    desc: go test backend
+    dir: backend
+    cmds:
+      - go test ./...
+
+  tidy:
+    desc: go mod tidy
+    dir: backend
+    cmds:
+      - go mod tidy
+
+  types:
+    desc: tsc --noEmit on frontend
+    dir: frontend
+    cmds:
+      - bun run check-types
+
+  check:
+    desc: vet + test + tsc
+    cmds:
+      - task: vet
+      - task: test
+      - task: types
+
+  clean:
+    desc: Remove build outputs
+    cmds:
+      - rm -rf {{.BIN_DIR}} frontend/dist
+      - rm -rf {{.FRONTEND_DIST}}/assets {{.FRONTEND_DIST}}/index.html

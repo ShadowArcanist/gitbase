@@ -1,0 +1,21 @@
+.DS_Store
+Icon
+
+# runtime
+data/
+/tmp/
+
+# node
+frontend/node_modules/
+frontend/dist/
+
+# embedded build output
+backend/internal/web/dist/
+
+# go
+backend/bin/
+*.test
+
+# editor / scratch
+tt.tt
+.ai/
