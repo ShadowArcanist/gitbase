@@ -15,24 +15,19 @@ permissions:
   deployments: write
   packages: write
 
+concurrency:
+  group: deploy-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
-  build-and-push:
+  prepare:
+    name: Prepare
     runs-on: ubuntu-latest
     if: github.repository == 'ShadowArcanist/gitbase'
-    env:
-      APP_NAME: gitbase
-      DEPLOY_ENVIRONMENT: Production
-      WATCHD_URL: ${{ secrets.WATCHD_URL }}
-      WATCHD_SHARED_SECRET: ${{ secrets.WATCHD_SHARED_SECRET }}
-      PRODUCTION_URL: ${{ vars.PRODUCTION_URL }}
-      IMAGE_NAME: ghcr.io/shadowarcanist/gitbase
-      WEBHOOK_RETRY_ATTEMPTS: "40"
-      WEBHOOK_RETRY_DELAY_SECONDS: "15"
-
+    outputs:
+      tag: ${{ steps.tag.outputs.tag }}
+      image: ${{ steps.refs.outputs.image }}
     steps:
-      - name: Checkout repo
-        uses: actions/checkout@v4
-
       - name: Resolve tag
         id: tag
         shell: bash
@@ -44,6 +39,34 @@ jobs:
           fi
           echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
 
+      - name: Prepare image reference
+        id: refs
+        shell: bash
+        run: |
+          echo "image=ghcr.io/shadowarcanist/gitbase" >> "$GITHUB_OUTPUT"
+
+  build-push:
+    name: Build ${{ matrix.arch }}
+    needs: prepare
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: amd64
+            platform: linux/amd64
+            runner: ubuntu-24.04
+          - arch: arm64
+            platform: linux/arm64
+            runner: ubuntu-24.04-arm
+    runs-on: ${{ matrix.runner }}
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Setup Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
       - name: Log in to GitHub Container Registry
         uses: docker/login-action@v3
         with:
@@ -51,16 +74,61 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Build and push Docker image
-        id: build
+      - name: Build and push image
         uses: docker/build-push-action@v6
         with:
           context: .
-          file: ./Dockerfile
           push: true
+          platforms: ${{ matrix.platform }}
           tags: |
-            ${{ env.IMAGE_NAME }}:latest
-            ${{ env.IMAGE_NAME }}:${{ steps.tag.outputs.tag }}
+            ${{ needs.prepare.outputs.image }}:${{ needs.prepare.outputs.tag }}-${{ matrix.arch }}
+            ${{ needs.prepare.outputs.image }}:latest-${{ matrix.arch }}
+          cache-from: type=gha,scope=${{ matrix.arch }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.arch }}
+
+  merge-manifest-and-deploy:
+    name: Merge Manifest and Deploy
+    needs:
+      - prepare
+      - build-push
+    runs-on: ubuntu-24.04
+    env:
+      APP_NAME: gitbase
+      DEPLOY_ENVIRONMENT: Production
+      WATCHD_URL: ${{ secrets.WATCHD_URL }}
+      WATCHD_SHARED_SECRET: ${{ secrets.WATCHD_SHARED_SECRET }}
+      PRODUCTION_URL: ${{ vars.PRODUCTION_URL }}
+      IMAGE: ${{ needs.prepare.outputs.image }}:latest
+      RELEASE_VERSION: ${{ needs.prepare.outputs.tag }}
+      WEBHOOK_RETRY_ATTEMPTS: "40"
+      WEBHOOK_RETRY_DELAY_SECONDS: "15"
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Setup Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Create and publish multi-arch manifest
+        id: manifest
+        shell: bash
+        run: |
+          docker buildx imagetools create \
+            "${{ needs.prepare.outputs.image }}:${RELEASE_VERSION}-amd64" \
+            "${{ needs.prepare.outputs.image }}:${RELEASE_VERSION}-arm64" \
+            --tag "${{ needs.prepare.outputs.image }}:${RELEASE_VERSION}" \
+            --tag "${IMAGE}"
+
+          DIGEST="$(docker buildx imagetools inspect "${IMAGE}" --format '{{json .Manifest.Digest}}' | tr -d '"')"
+          echo "digest=${DIGEST}" >> "$GITHUB_OUTPUT"
 
       - name: Create GitHub deployment object
         id: deployment
@@ -102,9 +170,7 @@ jobs:
       - name: Send deploy webhook to watchd
         env:
           DEPLOYMENT_ID: ${{ steps.deployment.outputs.deployment_id }}
-          RELEASE_VERSION: ${{ steps.tag.outputs.tag }}
-          IMAGE: ${{ env.IMAGE_NAME }}:latest
-          IMAGE_DIGEST: ${{ steps.build.outputs.digest }}
+          IMAGE_DIGEST: ${{ steps.manifest.outputs.digest }}
           GITHUB_RUN_ID_VALUE: ${{ github.run_id }}
         shell: bash
         run: |
