@@ -2,6 +2,9 @@ services:
   gitbase:
     image: 'ghcr.io/shadowarcanist/gitbase:latest'
     pull_policy: always
+    # Uncomment the below ports section if you plan to use SSH feature of Gitbase, replace 4444 with the SSH port you set for SSH_PORT variable
+    # ports:
+    #   - "4444:4444"
     environment:
       - SERVICE_URL_GITBASE_3000
       - 'GITBASE_PUBLIC_URL=${SERVICE_URL_GITBASE}'
