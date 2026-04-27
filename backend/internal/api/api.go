@@ -322,7 +322,7 @@ func (s *Server) activity(w http.ResponseWriter, r *http.Request) {
 
 var repoActions = map[string]struct{}{
 	"branches": {}, "tags": {}, "commits": {}, "commit-count": {}, "tree": {}, "tree-meta": {}, "blob": {},
-	"raw": {}, "diff": {}, "readme": {}, "image": {},
+	"raw": {}, "diff": {}, "readme": {}, "image": {}, "issues": {}, "labels": {},
 }
 
 func (s *Server) repoSubrouter(w http.ResponseWriter, r *http.Request) {
@@ -333,7 +333,7 @@ func (s *Server) repoSubrouter(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	parts := strings.Split(rest, "/")
-	var slug, action, sha, branchName string
+	var slug, action, sha, branchName, issueNumber, commentID, labelID string
 	last := parts[len(parts)-1]
 	if _, ok := repoActions[last]; ok {
 		slug = strings.Join(parts[:len(parts)-1], "/")
@@ -345,6 +345,23 @@ func (s *Server) repoSubrouter(w http.ResponseWriter, r *http.Request) {
 	} else if len(parts) >= 2 && parts[len(parts)-2] == "branches" {
 		branchName = last
 		action = "branches"
+		slug = strings.Join(parts[:len(parts)-2], "/")
+	} else if len(parts) >= 4 && parts[len(parts)-2] == "comments" && parts[len(parts)-4] == "issues" {
+		commentID = last
+		issueNumber = parts[len(parts)-3]
+		action = "issue-comment"
+		slug = strings.Join(parts[:len(parts)-4], "/")
+	} else if len(parts) >= 3 && parts[len(parts)-1] == "comments" && parts[len(parts)-3] == "issues" {
+		issueNumber = parts[len(parts)-2]
+		action = "issue-comments"
+		slug = strings.Join(parts[:len(parts)-3], "/")
+	} else if len(parts) >= 2 && parts[len(parts)-2] == "issues" {
+		issueNumber = last
+		action = "issues"
+		slug = strings.Join(parts[:len(parts)-2], "/")
+	} else if len(parts) >= 2 && parts[len(parts)-2] == "labels" {
+		labelID = last
+		action = "label-detail"
 		slug = strings.Join(parts[:len(parts)-2], "/")
 	} else {
 		slug = rest
@@ -361,6 +378,15 @@ func (s *Server) repoSubrouter(w http.ResponseWriter, r *http.Request) {
 		}
 		if branchName != "" {
 			rctx.URLParams.Add("branchName", branchName)
+		}
+		if issueNumber != "" {
+			rctx.URLParams.Add("number", issueNumber)
+		}
+		if commentID != "" {
+			rctx.URLParams.Add("commentID", commentID)
+		}
+		if labelID != "" {
+			rctx.URLParams.Add("labelID", labelID)
 		}
 	}
 	switch action {
@@ -437,6 +463,61 @@ func (s *Server) repoSubrouter(w http.ResponseWriter, r *http.Request) {
 		}
 		if r.Method == http.MethodGet {
 			s.getImage(w, r)
+			return
+		}
+	case "issues":
+		if issueNumber != "" {
+			switch r.Method {
+			case http.MethodGet:
+				s.getIssue(w, r)
+				return
+			case http.MethodPatch:
+				s.patchIssue(w, r)
+				return
+			case http.MethodDelete:
+				s.deleteIssue(w, r)
+				return
+			}
+		} else {
+			switch r.Method {
+			case http.MethodGet:
+				s.listIssues(w, r)
+				return
+			case http.MethodPost:
+				s.createIssue(w, r)
+				return
+			}
+		}
+	case "issue-comments":
+		if r.Method == http.MethodPost {
+			s.createComment(w, r)
+			return
+		}
+	case "issue-comment":
+		switch r.Method {
+		case http.MethodPatch:
+			s.updateComment(w, r)
+			return
+		case http.MethodDelete:
+			s.deleteComment(w, r)
+			return
+		}
+	case "labels":
+		switch r.Method {
+		case http.MethodGet:
+			s.listLabels(w, r)
+			return
+		case http.MethodPost:
+			s.createLabel(w, r)
+			return
+		}
+	case "label-detail":
+		switch r.Method {
+		case http.MethodPatch:
+			s.updateLabel(w, r)
+			return
+		case http.MethodDelete:
+			s.deleteLabel(w, r)
 			return
 		}
 	default:

@@ -105,6 +105,49 @@ export type BranchesResponse = {
 	default_branch: string;
 };
 
+export type Label = {
+	id: number;
+	repo_id: number;
+	name: string;
+	color: string;
+	description: string;
+	created_at: string;
+};
+
+export type Issue = {
+	id: number;
+	repo_id: number;
+	number: number;
+	title: string;
+	body: string;
+	state: "open" | "closed";
+	state_reason: string;
+	labels: Label[];
+	comment_count: number;
+	created_at: string;
+	updated_at: string;
+	closed_at: string | null;
+};
+
+export type IssueListResponse = {
+	issues: Issue[];
+	open_count: number;
+	closed_count: number;
+};
+
+export type IssueDetailResponse = {
+	issue: Issue;
+	comments: IssueComment[];
+};
+
+export type IssueComment = {
+	id: number;
+	issue_id: number;
+	body: string;
+	created_at: string;
+	updated_at: string;
+};
+
 export function slugToUrl(slug: string) {
 	return slug;
 }
@@ -348,5 +391,84 @@ export const api = {
 			} catch {}
 			throw new Error(msg);
 		}
+	},
+
+	// Issues
+	listIssues: (slug: string, state = "open") =>
+		jsonFetch<IssueListResponse>(
+			`/api/repos/${slugToUrl(slug)}/issues?state=${encodeURIComponent(state)}`,
+		),
+	getIssue: (slug: string, number: number) =>
+		jsonFetch<IssueDetailResponse>(
+			`/api/repos/${slugToUrl(slug)}/issues/${number}`,
+		),
+	createIssue: (
+		slug: string,
+		body: { title: string; body?: string; label_ids?: number[] },
+	) =>
+		jsonFetch<Issue>(`/api/repos/${slugToUrl(slug)}/issues`, {
+			method: "POST",
+			body: JSON.stringify(body),
+		}),
+	patchIssue: (
+		slug: string,
+		number: number,
+		body: {
+			title?: string;
+			body?: string;
+			state?: string;
+			state_reason?: string;
+			label_ids?: number[];
+		},
+	) =>
+		jsonFetch<Issue>(`/api/repos/${slugToUrl(slug)}/issues/${number}`, {
+			method: "PATCH",
+			body: JSON.stringify(body),
+		}),
+	deleteIssue: async (slug: string, number: number) => {
+		const res = await fetch(
+			`/api/repos/${slugToUrl(slug)}/issues/${number}`,
+			{ method: "DELETE" },
+		);
+		if (!res.ok) throw new Error(`${res.status}`);
+	},
+
+	// Issue Comments
+	createComment: (slug: string, number: number, body: { body: string }) =>
+		jsonFetch<IssueComment>(
+			`/api/repos/${slugToUrl(slug)}/issues/${number}/comments`,
+			{ method: "POST", body: JSON.stringify(body) },
+		),
+	updateComment: (slug: string, number: number, commentId: number, body: { body: string }) =>
+		jsonFetch<IssueComment>(
+			`/api/repos/${slugToUrl(slug)}/issues/${number}/comments/${commentId}`,
+			{ method: "PATCH", body: JSON.stringify(body) },
+		),
+	deleteComment: async (slug: string, number: number, commentId: number) => {
+		const res = await fetch(
+			`/api/repos/${slugToUrl(slug)}/issues/${number}/comments/${commentId}`,
+			{ method: "DELETE" },
+		);
+		if (!res.ok) throw new Error(`${res.status}`);
+	},
+
+	// Labels
+	listLabels: (slug: string) =>
+		jsonFetch<Label[]>(`/api/repos/${slugToUrl(slug)}/labels`),
+	createLabel: (slug: string, body: { name: string; color?: string; description?: string }) =>
+		jsonFetch<Label>(`/api/repos/${slugToUrl(slug)}/labels`, {
+			method: "POST",
+			body: JSON.stringify(body),
+		}),
+	updateLabel: (slug: string, id: number, body: { name?: string; color?: string; description?: string }) =>
+		jsonFetch<Label>(`/api/repos/${slugToUrl(slug)}/labels/${id}`, {
+			method: "PATCH",
+			body: JSON.stringify(body),
+		}),
+	deleteLabel: async (slug: string, id: number) => {
+		const res = await fetch(`/api/repos/${slugToUrl(slug)}/labels/${id}`, {
+			method: "DELETE",
+		});
+		if (!res.ok) throw new Error(`${res.status}`);
 	},
 };

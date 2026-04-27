@@ -12,6 +12,7 @@ import {
 import {
 	ChevronDownIcon,
 	ArrowLeftIcon,
+	CircleDotIcon,
 	CodeIcon,
 	CopyIcon,
 	FileIcon,
@@ -32,6 +33,9 @@ import { toast } from "sonner";
 import { CodeFileView } from "@/components/repo/code-file-view";
 import { CommitAvatar } from "@/components/repo/commit-avatar";
 import { CommitPage } from "@/components/repo/commit-page";
+import { IssueDetail } from "@/components/repo/issue-detail";
+import { IssuesTab } from "@/components/repo/issues-tab";
+import { LabelsPage } from "@/components/repo/labels-page";
 import { RepoFileTree } from "@/components/repo/repo-file-tree";
 import { FolderView } from "@/components/repo/folder-view";
 import {
@@ -75,7 +79,7 @@ import { type Repo, api, slugToUrl } from "@/lib/api";
 import { formatRelativeTime } from "@/lib/format-relative-time";
 import { cn, formatBytes } from "@/lib/utils";
 
-type Tab = "code" | "commits" | "branches" | "settings";
+type Tab = "code" | "commits" | "branches" | "issues" | "settings";
 
 type RepoSearch = {
 	tab?: Tab;
@@ -83,6 +87,8 @@ type RepoSearch = {
 	path?: string;
 	sha?: string;
 	file?: string;
+	issue?: number;
+	labels?: boolean;
 };
 
 type TreeQueryData = { entries: { name: string; type: string }[] };
@@ -114,6 +120,8 @@ export const Route = createFileRoute("/repos/$")({
 		path: typeof s.path === "string" ? s.path : undefined,
 		sha: typeof s.sha === "string" ? s.sha : undefined,
 		file: typeof s.file === "string" ? s.file : undefined,
+		issue: typeof s.issue === "number" ? s.issue : undefined,
+		labels: s.labels === true ? true : undefined,
 	}),
 	loader: ({ params, context }) => {
 		const slug = params._splat ?? "";
@@ -181,6 +189,9 @@ function RepoPage() {
 								/>
 							)}
 							{tab === "branches" && <BranchesTab repo={repoQ.data} />}
+							{tab === "issues" && (
+								<IssuesTabWrapper repo={repoQ.data} search={search} />
+							)}
 							{tab === "settings" && <SettingsTab repo={repoQ.data} />}
 						</div>
 					</>
@@ -408,7 +419,14 @@ function RepoToolbar({
 	const branches = branchesQ.data?.branches ?? [];
 	const commitCount = commitCountQ.data?.count ?? 0;
 
-	const isOtherTab = tab === "branches" || tab === "settings";
+	const issuesQ = useQuery({
+		queryKey: ["issues", repo.slug, "open"],
+		queryFn: () => api.listIssues(repo.slug, "open"),
+		staleTime: 60_000,
+	});
+	const openIssueCount = issuesQ.data?.open_count ?? 0;
+
+	const isOtherTab = tab === "branches" || tab === "settings" || tab === "issues";
 	const hasPath = tab === "code" && !!search.path;
 	const isCommitsTab = tab === "commits";
 	const showBackLink = hasPath || isCommitsTab || isOtherTab;
@@ -450,7 +468,7 @@ function RepoToolbar({
 					<ArrowLeftIcon size={14} strokeWidth={2} />
 				</Link>
 			)}
-			{!isOtherTab && (
+			{!isOtherTab && !isCommitsTab && (
 				<>
 					<Select
 						value={rev}
@@ -493,26 +511,43 @@ function RepoToolbar({
 							{commitCount === 1 ? "Commit" : "Commits"}
 						</span>
 					</button>
+						<button
+							type="button"
+							onClick={() =>
+								nav({
+									to: "/repos/$",
+									params: { _splat: repo.slug },
+									search: { tab: "branches" },
+								})
+							}
+							className={chipClass}
+						>
+							<SplitIcon size={13} strokeWidth={2} />
+							<span className="optical-center">
+								<span className="tabular-nums font-semibold">{branches.length}</span>{" "}
+								{branches.length === 1 ? "Branch" : "Branches"}
+							</span>
+						</button>
+						<button
+							type="button"
+							onClick={() =>
+								nav({
+									to: "/repos/$",
+									params: { _splat: repo.slug },
+									search: { tab: "issues" },
+								})
+							}
+							className={chipClass}
+						>
+							<CircleDotIcon size={13} strokeWidth={2} />
+							<span className="optical-center">
+								<span className="tabular-nums font-semibold">{openIssueCount}</span>{" "}
+								{openIssueCount === 1 ? "Issue" : "Issues"}
+							</span>
+						</button>
 				</>
 			)}
 			<div className="ml-auto flex items-center gap-2">
-				<button
-					type="button"
-					onClick={() =>
-						nav({
-							to: "/repos/$",
-							params: { _splat: repo.slug },
-							search: { tab: "branches" },
-						})
-					}
-					className={chipClass}
-				>
-					<SplitIcon size={13} strokeWidth={2} />
-					<span className="optical-center">
-						<span className="tabular-nums font-semibold">{branches.length}</span>{" "}
-						{branches.length === 1 ? "Branch" : "Branches"}
-					</span>
-				</button>
 				<button
 					type="button"
 					onClick={() =>
@@ -1476,6 +1511,58 @@ function FormField({
 			</Label>
 			{children}
 		</div>
+	);
+}
+
+function IssuesTabWrapper({ repo, search }: { repo: Repo; search: RepoSearch }) {
+	const nav = useNavigate();
+	if (search.labels) {
+		return (
+			<LabelsPage
+				repo={repo}
+				onBack={() =>
+					nav({
+						to: "/repos/$",
+						params: { _splat: repo.slug },
+						search: { tab: "issues" },
+					})
+				}
+			/>
+		);
+	}
+	if (search.issue) {
+		return (
+			<IssueDetail
+				repo={repo}
+				number={search.issue}
+				onBack={() =>
+					nav({
+						to: "/repos/$",
+						params: { _splat: repo.slug },
+						search: { tab: "issues" },
+					})
+				}
+			/>
+		);
+	}
+	return (
+		<IssuesTab
+			repo={repo}
+			onSelectIssue={(num) =>
+				nav({
+					to: "/repos/$",
+					params: { _splat: repo.slug },
+					search: { tab: "issues", issue: num },
+				})
+			}
+			onOpenLabels={() =>
+				nav({
+					to: "/repos/$",
+					params: { _splat: repo.slug },
+					search: { tab: "issues", labels: true },
+				})
+			}
+		/>
 	);
 }
 
