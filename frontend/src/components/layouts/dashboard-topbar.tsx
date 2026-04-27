@@ -73,7 +73,7 @@ export function DashboardTopbar() {
 							activeOptions={{ exact: item.exact ?? false }}
 							activeProps={{ className: "active" }}
 						>
-							{item.label}
+							<span className="optical-center">{item.label}</span>
 						</Link>
 					</Button>
 				))}
