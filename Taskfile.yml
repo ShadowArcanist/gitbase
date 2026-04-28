@@ -71,7 +71,7 @@ tasks:
   docker:run:
     desc: Run Docker image, bind 3000, persist ./data
     cmds:
-      - docker run --rm -p 3000:3000 -p 4444:4444 -v {{.ROOT_DIR}}/data:/data gitbase:local
+      - docker run --rm -p 3000:3000 -p 4444:4444 -v {{.ROOT_DIR}}/data:/data -e GITBASE_DATA=/data gitbase:local
 
   vet:
     desc: go vet backend
